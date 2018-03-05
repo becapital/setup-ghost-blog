@@ -79,13 +79,12 @@ if [ "$1" = "" ] || [ "$1" = "BLOG_FULL_DOMAIN_NAME" ]; then
   exit 1
 fi
 #如果不需要域名只是IP就把下面这段注释掉
-//FQDN_REGEX='^([a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}$'
+FQDN_REGEX='^([a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}$'
 if ! printf %s "$1" | grep -Eq "$FQDN_REGEX"; then
   echoerr "Invalid parameter. You must enter a fully qualified domain name (FQDN)."
   exit 1
 fi
 #如果不需要域名只是IP就把上面这段注释掉
-//
 if id -u "ghost$max_blogs" >/dev/null 2>&1; then
   echoerr "Maximum number of Ghost blogs ($max_blogs) reached."
   exit 1
