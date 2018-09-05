@@ -73,11 +73,7 @@ if [ "$phymem" -lt 500000 ]; then
 fi
 
 # Check for valid blog domain name (FQDN)
-if [ "$1" = "" ] || [ "$1" = "BLOG_FULL_DOMAIN_NAME" ]; then
-  script_name=$(basename "$0")
-  echo "Usage: bash $script_name BLOG_FULL_DOMAIN_NAME (Replace with actual value)"
-  exit 1
-fi
+
 #如果不需要域名只是IP就把下面这段注释掉
 
 #如果不需要域名只是IP就把上面这段注释掉
