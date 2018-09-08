@@ -5,7 +5,7 @@
 #
 # DO NOT RUN THIS SCRIPT ON YOUR PC OR MAC!
 #
-# Copyright (C) 2015-2017 Lin Song <linsongui@gmail.com>
+# Copyright (C) 2015-2018 Lin Song <linsongui@gmail.com>
 # Based on the work of Herman Stevens (Copyright 2013)
 #
 # This program is free software: you can redistribute it and/or modify it under
@@ -25,6 +25,8 @@ export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 
 echoerr() { echo "Error: $1" >&2; }
 
+ghost_blog_install() {
+
 # Check operating system
 os_type="$(lsb_release -si 2>/dev/null)"
 os_vers="$(lsb_release -sr 2>/dev/null)"
@@ -37,14 +39,14 @@ if [ -z "$os_type" ]; then
   [ "$os_type" = "ubuntu" ] && os_type=Ubuntu
 fi
 if [ "$os_type" = "Ubuntu" ]; then
-  if [ "$os_vers" != "16.04" ] && [ "$os_vers" != "14.04" ] && [ "$os_vers" != "12.04" ]; then
-    echoerr "This script only supports Ubuntu 16.04/14.04/12.04."
+  if [ "$os_vers" != "16.04" ] && [ "$os_vers" != "14.04" ]; then
+    echoerr "This script only supports Ubuntu 16.04 and 14.04."
     exit 1
   fi
 elif [ "$os_type" = "Debian" ]; then
   os_vers="$(sed 's/\..*//' /etc/debian_version 2>/dev/null)"
-  if [ "$os_vers" != "8" ]; then
-    echoerr "This script only supports Debian 8 (Jessie)."
+  if [ "$os_vers" != "8" ] && [ "$os_vers" != "9" ]; then
+    echoerr "This script only supports Debian 9 and 8."
     exit 1
   fi
 else
@@ -52,7 +54,7 @@ else
     echoerr "This script only supports Ubuntu, Debian and CentOS."
     exit 1
   elif ! grep -qs -e "release 6" -e "release 7" /etc/redhat-release; then
-    echoerr "This script only supports CentOS 6 and 7."
+    echoerr "This script only supports CentOS 7 and 6."
     exit 1
   fi
   os_type="CentOS"
@@ -73,10 +75,13 @@ if [ "$phymem" -lt 500000 ]; then
 fi
 
 # Check for valid blog domain name (FQDN)
+if [ "$1" = "" ] || [ "$1" = "BLOG_FULL_DOMAIN_NAME" ]; then
+  script_name=$(basename "$0")
+  echo "Usage: bash $script_name BLOG_FULL_DOMAIN_NAME (Replace with actual value)"
+  exit 1
 
-#如果不需要域名只是IP就把下面这段注释掉
+fi
 
-#如果不需要域名只是IP就把上面这段注释掉
 if id -u "ghost$max_blogs" >/dev/null 2>&1; then
   echoerr "Maximum number of Ghost blogs ($max_blogs) reached."
   exit 1
@@ -98,8 +103,8 @@ if id -u ghost >/dev/null 2>&1; then
     if ! id -u "ghost$count" >/dev/null 2>&1; then
       ghost_num="$count"
       ghost_user="ghost$count"
-      let ghost_port=$ghost_port+$count
-      let ghost_port=$ghost_port-1
+      ghost_port=$((ghost_port+count))
+      ghost_port=$((ghost_port-1))
       break
     fi
   done
@@ -117,8 +122,8 @@ if id -u ghost >/dev/null 2>&1; then
   esac
   
   phymem_req=250
-  let phymem_req1=$phymem_req*$ghost_num
-  let phymem_req2=$phymem_req*$ghost_num*1000
+  phymem_req1=$((phymem_req*ghost_num))
+  phymem_req2=$((phymem_req*ghost_num*1000))
   
   if [ "$phymem" -lt "$phymem_req2" ]; then
     echo "This server might not have enough RAM to install another Ghost blog."
@@ -143,19 +148,14 @@ fi
 clear
 
 cat <<EOF
-Welcome! This script will install the latest v0.11-LTS version of Ghost blog
+Welcome! This script will install Ghost blog version 0.11.13
 on your server, with Nginx (as a reverse proxy) and ModSecurity WAF.
-
 The full domain name for your new blog is:
-
->>> $1 <<<
-
+>> $1 <<
 Please double check. This MUST be correct for it to work!
-
 IMPORTANT: DO NOT RUN THIS SCRIPT ON YOUR PC OR MAC!
-This script should ONLY be used on a VPS or dedicated server, with
-*freshly installed* Ubuntu 16.04/14.04/12.04, Debian 8 or CentOS 6/7.
-
+It should only be used on a virtual private server (VPS) or dedicated server,
+with *freshly installed* Ubuntu 16.04/14.04, Debian 9/8 or CentOS 7/6.
 EOF
 
 read -r -p "Confirm and proceed with the install? [y/N] " response
@@ -183,7 +183,7 @@ if [ "$os_type" = "CentOS" ]; then
   yum -y install epel-release || { echoerr "Cannot add EPEL repo."; exit 1; }
 
   # We need some more software
-  yum -y install unzip fail2ban gcc gcc-c++ make openssl-devel \
+  yum --enablerepo=epel -y install unzip fail2ban gcc gcc-c++ make openssl-devel \
     wget curl sudo libxml2-devel curl-devel httpd-devel pcre-devel \
     libtool autoconf || { echoerr "'yum install' failed."; exit 1; }
 
@@ -207,7 +207,7 @@ else
   # We need some more software
   apt-get -yq install unzip fail2ban \
     build-essential apache2-dev libxml2-dev wget curl sudo \
-    libcurl4-openssl-dev libpcre3-dev libssl-dev \
+    libcurl4-openssl-dev libpcre3-dev libssl-dev zlib1g-dev \
     libtool autoconf || { echoerr "'apt-get install' failed."; exit 1; }
 
 fi
@@ -224,33 +224,37 @@ fi
 service fail2ban stop >/dev/null 2>&1
 service fail2ban start
 
-# Insert IPTables rules at boot
+# Insert IPTables rules on boot
 if ! grep -qs "ghost blog setup script" /etc/rc.local; then
-  if [ "$os_type" != "CentOS" ]; then
-    sed --follow-symlinks -i -e '/^exit 0/d' /etc/rc.local
+  if [ -f /etc/rc.local ]; then
+    if [ "$os_type" != "CentOS" ]; then
+      sed --follow-symlinks -i -e '/^exit 0/d' /etc/rc.local
+    fi
+  else
+    echo '#!/bin/sh' > /etc/rc.local
   fi
 cat >> /etc/rc.local <<'EOF'
-
 # Added by ghost blog setup script
+(sleep 15
 iptables -I INPUT -p tcp --dport 80 -j ACCEPT
 iptables -I INPUT -p tcp --dport 443 -j ACCEPT
-service fail2ban restart
+service fail2ban restart)&
 EOF
   if [ "$os_type" != "CentOS" ]; then
     echo "exit 0" >> /etc/rc.local
   fi
-chmod +x /etc/rc.local
+  chmod +x /etc/rc.local
 fi
 
 # Next, we need to install Node.js.
 # Ref: https://github.com/nodesource/distributions
 if [ "$ghost_num" = "1" ] || [ ! -f /usr/bin/node ]; then
   if [ "$os_type" = "CentOS" ]; then
-    curl -sL https://rpm.nodesource.com/setup_4.x | bash -
+    curl -sL https://rpm.nodesource.com/setup_6.x | bash -
     sed -i '/gpgkey/a exclude=nodejs' /etc/yum.repos.d/epel.repo
     yum -y --disablerepo=epel install nodejs || { echoerr "Failed to install 'nodejs'."; exit 1; }
   else
-    curl -sL https://deb.nodesource.com/setup_4.x | bash -
+    curl -sL https://deb.nodesource.com/setup_6.x | bash -
     apt-get -yq install nodejs || { echoerr "Failed to install 'nodejs'."; exit 1; }
   fi
 fi
@@ -279,22 +283,18 @@ fi
 # Switch to Ghost blog user. We use a "here document" to run multiple commands as this user.
 cd "/var/www/$BLOG_FQDN" || exit 1
 sudo -u "$ghost_user" BLOG_FQDN="$BLOG_FQDN" ghost_num="$ghost_num" ghost_port="$ghost_port" HOME="/var/www/$BLOG_FQDN" /bin/bash <<'SU_END'
-
-# Get the Ghost blog source (latest v0.11-LTS version), unzip and install.
-ghost_releases="https://api.github.com/repos/TryGhost/Ghost/releases"
-ghost_url="$(wget -t 3 -T 15 -qO- $ghost_releases | grep browser_download_url | grep 'Ghost-0\.11\.' | head -n 1 | cut -d '"' -f 4)"
+# Get the Ghost blog source, unzip and install.
+ghost_url="https://github.com/TryGhost/Ghost/releases/download/0.11.13/Ghost-0.11.13.zip"
 if ! wget -t 3 -T 30 -nv -O ghost-latest.zip "$ghost_url"; then
   echo "Error: Cannot download Ghost blog source." >&2
   exit 1
 fi
 unzip -o -qq ghost-latest.zip && /bin/rm -f ghost-latest.zip
 npm install --production
-
 # Generate config file and make sure that Ghost uses your actual domain name
 /bin/cp -f config.js config.js.old 2>/dev/null
 sed "s/my-ghost-blog.com/$BLOG_FQDN/" <config.example.js >config.js
 sed -i "s/port: '2368'/port: '$ghost_port'/" config.js
-
 # We need to make certain that Ghost will start automatically after a reboot
 cat > starter.sh <<'EOF'
 #!/bin/sh
@@ -307,22 +307,17 @@ else
   echo "Already running!"
 fi
 EOF
-
 # Replace placeholder with your actual domain name:
 sed -i "s/YOUR.DOMAIN.NAME/$BLOG_FQDN/" starter.sh
-
 if [ "$ghost_num" != "1" ]; then
   sed -i "/^pgrep/s/ghost/ghost$ghost_num/" starter.sh
   sed -i "s/nodelog\.txt/nodelog$ghost_num.txt/" starter.sh
 fi
-
 # Make the script executable with:
 chmod +x starter.sh
-
 # We use crontab to start this script after a reboot:
 crontab -r 2>/dev/null
 crontab -l 2>/dev/null | { cat; echo "@reboot /var/www/$BLOG_FQDN/starter.sh"; } | crontab -
-
 SU_END
 
 # Remove temporary swap file
@@ -364,9 +359,9 @@ if [ "$ghost_num" = "1" ] || [ ! -f /opt/nginx/sbin/nginx ]; then
   
   # Download and compile Nginx:
   cd /opt/src || exit 1
-  wget -t 3 -T 30 -qO- http://nginx.org/download/nginx-1.10.2.tar.gz | tar xz
-  [ ! -d nginx-1.10.2 ] && { echoerr "Cannot download Nginx source."; exit 1; }
-  cd nginx-1.10.2 || exit 1
+  wget -t 3 -T 30 -qO- https://nginx.org/download/nginx-1.14.0.tar.gz | tar xz
+  [ ! -d nginx-1.14.0 ] && { echoerr "Cannot download Nginx source."; exit 1; }
+  cd nginx-1.14.0 || exit 1
   ./configure --add-module=../ModSecurity-nginx_refactoring/nginx/modsecurity \
   --prefix=/opt/nginx --user=nginx --group=nginx \
   --with-http_ssl_module --with-http_v2_module --with-http_realip_module
@@ -466,25 +461,17 @@ cat > /etc/init.d/nginx <<'EOF'
 # processname: nginx
 # config:      /opt/nginx/conf/nginx.conf
 # pidfile:     /var/run/nginx.pid
-
 # Source function library.
 . /etc/rc.d/init.d/functions
-
 # Source networking configuration.
 . /etc/sysconfig/network
-
 # Check that networking is up.
 [ "$NETWORKING" = "no" ] && exit 0
-
 nginx="/opt/nginx/sbin/nginx"
 prog=$(basename $nginx)
-
 NGINX_CONF_FILE="/opt/nginx/conf/nginx.conf"
-
 [ -f /etc/sysconfig/nginx ] && . /etc/sysconfig/nginx
-
 lockfile=/var/lock/subsys/nginx
-
 make_dirs() {
    # make required directories
    user=`$nginx -V 2>&1 | grep "configure arguments:" | sed 's/[^*]*--user=\([^ ]*\).*/\1/g' -`
@@ -502,7 +489,6 @@ make_dirs() {
        fi
    done
 }
-
 start() {
     [ -x $nginx ] || exit 5
     [ -f $NGINX_CONF_FILE ] || exit 6
@@ -514,7 +500,6 @@ start() {
     [ $retval -eq 0 ] && touch $lockfile
     return $retval
 }
-
 stop() {
     echo -n $"Stopping $prog: "
     killproc $prog -QUIT
@@ -523,14 +508,12 @@ stop() {
     [ $retval -eq 0 ] && rm -f $lockfile
     return $retval
 }
-
 restart() {
     configtest || return $?
     stop
     sleep 1
     start
 }
-
 reload() {
     configtest || return $?
     echo -n $"Reloading $prog: "
@@ -538,23 +521,18 @@ reload() {
     RETVAL=$?
     echo
 }
-
 force_reload() {
     restart
 }
-
 configtest() {
   $nginx -t -c $NGINX_CONF_FILE
 }
-
 rh_status() {
     status $prog
 }
-
 rh_status_q() {
     rh_status >/dev/null 2>&1
 }
-
 case "$1" in
     start)
         rh_status_q && exit 0
@@ -596,7 +574,6 @@ cat > /lib/systemd/system/nginx.service <<'EOF'
 [Unit]
 Description=The NGINX HTTP and reverse proxy server
 After=syslog.target network.target remote-fs.target nss-lookup.target
-
 [Service]
 Type=forking
 PIDFile=/opt/nginx/logs/nginx.pid
@@ -605,7 +582,6 @@ ExecStart=/opt/nginx/sbin/nginx
 ExecReload=/bin/kill -s HUP $MAINPID
 ExecStop=/bin/kill -s QUIT $MAINPID
 PrivateTmp=true
-
 [Install]
 WantedBy=multi-user.target
 EOF
@@ -668,19 +644,13 @@ service nginx start
 PUBLIC_IP=$(wget -t 3 -T 15 -qO- http://ipv4.icanhazip.com)
 
 cat <<EOF
-
 ==================================================================================
-
 Setup is complete. Your new Ghost blog is now ready for use!
-
 Ghost blog is installed in: /var/www/$BLOG_FQDN
 ModSecurity and Nginx config files: /opt/nginx/conf
 Nginx web server logs: /opt/nginx/logs
-
 [Next Steps]
-
 You must set up DNS (A Record) to point $BLOG_FQDN to this server $PUBLIC_IP
-
 EOF
 
 if [ "$ghost_num" = "1" ]; then
@@ -694,37 +664,46 @@ EOF
 else
   
 cat <<EOF
+-----------------------
 >>> IMPORTANT NOTES <<<
-
+-----------------------
 To work around a ModSecurity bug which only affects multiple blogs,
 you must now manage your blogs via SSH port forwarding (see below),
 instead of using http://$BLOG_FQDN/ghost.
-
 First, configure your SSH client to forward port 2368 (1st blog), 2369 (2nd blog), etc.
 Then browse to http://localhost:2368/ghost (or 2369, etc.) to manage your blogs.
-
 Related issue: https://github.com/hwdsl2/setup-ghost-blog/issues/1
-
 EOF
   
 fi
 
 cat <<EOF
-
 To restart this Ghost blog:
 su - $ghost_user -s /bin/bash -c 'forever stopall; ./starter.sh'
-
 To restart Nginx web server:
 service nginx restart
-
 (Optional) Check out my blog article for more configuration steps:
 https://blog.ls20.com/install-ghost-0-3-3-with-nginx-and-modsecurity/
-
-Ghost support: http://support.ghost.org
+Ghost docs: https://docs.ghost.org/v0.11/docs
 Real-time chat: https://ghost.org/slack
-
 ==================================================================================
-
 EOF
 
+}
+
+## Defer setup until we have the complete script
+ghost_blog_install "$@"
+
 exit 0
+© 2018 GitHub, Inc.
+Terms
+Privacy
+Security
+Status
+Help
+Contact GitHub
+Pricing
+API
+Training
+Blog
+About
