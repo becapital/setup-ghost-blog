@@ -28,16 +28,12 @@
 #### 选择 ModSecurity 防火墙：
 
 ```
-wget https://git.io/ghost-nginx-modsecurity -O ghost-setup.sh
-sudo bash ghost-setup.sh BLOG_FULL_DOMAIN_NAME
+wget https://raw.githubusercontent.com/becapital/setup-ghost-blog/master/ghost-nginx-modsecurity.sh -O ghost-setup.sh
+sudo bash ghost-setup.sh BLOG_FULL_DOMAIN_NAME [输入IP]
 ```
 
 #### 选择 Naxsi 防火墙：
 
-```
-wget https://git.io/ghost-nginx-naxsi -O ghost-setup.sh
-sudo bash ghost-setup.sh BLOG_FULL_DOMAIN_NAME
-```
 
 **注：** 请把上面的参数替换为你的博客的完整域名。将会安装最新的 <a href="https://dev.ghost.org/tag/releases/" target="_blank">0.11.x (LTS)</a> 版本的 Ghost 博客。
 
