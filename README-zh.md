@@ -31,8 +31,16 @@
 wget https://raw.githubusercontent.com/becapital/setup-ghost-blog/master/ghost-nginx-modsecurity.sh -O ghost-setup.sh
 sudo bash ghost-setup.sh BLOG_FULL_DOMAIN_NAME [输入IP]
 ```
+###使用PM2让Ghost永远在线 只要我们一断开ssh，Ghost的进程就会被关闭，这里我们使用PM2来守护Ghost服务进程，并让其运行在生产模式production上
 
-#### 选择 Naxsi 防火墙：
+//！！首先进到ghost的安装目录
+//安装pm2
+npm install pm2 -g
+//让ghost以production模式运作，指定程序的入口index.js，并且此进程命名为ghost
+NODE_ENV=production pm2 start index.js --name "ghost"
+//开机启动
+pm2 startup centos
+pm2 save
 
 
 **注：** 请把上面的参数替换为你的博客的完整域名。将会安装最新的 <a href="https://dev.ghost.org/tag/releases/" target="_blank">0.11.x (LTS)</a> 版本的 Ghost 博客。
